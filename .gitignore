@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Training photos — large, personal, and regenerable via organize.py
+/raw/
+/data/
+
+# Regenerable feature cache (tied to the local data/ dir, delete to recompute)
+features.npz
