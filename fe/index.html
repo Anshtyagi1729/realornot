@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Recapture Check</title>
+
+        <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+        <style>
+            :root {
+                --bg: #14161a;
+                --panel: #1c1f25;
+                --edge: #2a2e36;
+                --ink: #e8e6e1;
+                --dim: #8a8f98;
+                --real: #5cc8a8;
+                --screen: #e0705a;
+                --mid: #d9a441;
+                --accent: #7fb4d9;
+            }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+            }
+            body {
+                background: var(--bg);
+                color: var(--ink);
+                font:
+                    15px/1.5 ui-monospace,
+                    "SF Mono",
+                    "Cascadia Mono",
+                    Menlo,
+                    Consolas,
+                    monospace;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 20px 14px 34px;
+            }
+            .wrap {
+                width: min(560px, 100%);
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            h1 {
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: 0.05em;
+            }
+            h1 span {
+                color: var(--dim);
+                font-weight: 400;
+            }
+            .panel {
+                background: var(--panel);
+                border: 1px solid var(--edge);
+                border-radius: 8px;
+                overflow: hidden;
+            }
+            #stage {
+                position: relative;
+                aspect-ratio: 4/3;
+                background: #000;
+            }
+            video {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+            #ph {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--dim);
+                font-size: 13px;
+                text-align: center;
+                padding: 20px;
+                z-index: 10;
+            }
+            #uploadView {
+                display: none;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                position: absolute;
+                inset: 0;
+                z-index: 5;
+            }
+            .patchbox {
+                position: absolute;
+                border: 1.5px solid var(--accent);
+                opacity: 0.9;
+                border-radius: 2px;
+                pointer-events: none;
+                transition: opacity 0.4s;
+                z-index: 20;
+            }
+            .controls {
+                display: flex;
+                gap: 8px;
+                padding: 10px;
+                flex-wrap: wrap;
+            }
+            button,
+            label.filebtn {
+                background: transparent;
+                border: 1px solid var(--edge);
+                color: var(--ink);
+                font: inherit;
+                font-size: 13px;
+                padding: 8px 14px;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            button:hover,
+            label.filebtn:hover {
+                border-color: var(--accent);
+            }
+            button:focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+            }
+            button.primary {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            button:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+            input[type="file"] {
+                display: none;
+            }
+            .result {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                padding: 16px;
+            }
+            .rmain {
+                flex: 1;
+                min-width: 0;
+            }
+            #verdict {
+                font-size: 13px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--dim);
+            }
+            #scoreNum {
+                font-size: 46px;
+                font-weight: 600;
+                line-height: 1.15;
+                font-variant-numeric: tabular-nums;
+            }
+            .meter {
+                height: 7px;
+                background: var(--edge);
+                border-radius: 4px;
+                position: relative;
+                margin-top: 8px;
+            }
+            .meter .fill {
+                height: 100%;
+                width: 0%;
+                border-radius: 4px;
+                background: var(--dim);
+                transition:
+                    width 0.35s,
+                    background 0.35s;
+            }
+            .meter .thr {
+                position: absolute;
+                top: -3px;
+                bottom: -3px;
+                width: 2px;
+                background: var(--dim);
+                opacity: 0.7;
+            }
+            .rowline {
+                display: flex;
+                justify-content: space-between;
+                font-size: 10.5px;
+                color: var(--dim);
+                margin-top: 5px;
+            }
+            #spec {
+                width: 118px;
+                height: 118px;
+                flex: none;
+                image-rendering: pixelated;
+                background: #000;
+                border: 1px solid var(--edge);
+                border-radius: 6px;
+            }
+            .hint {
+                color: var(--dim);
+                font-size: 11.5px;
+                line-height: 1.55;
+                padding: 0 2px;
+            }
+            #err {
+                color: var(--screen);
+                font-size: 12.5px;
+                padding: 0 12px 10px;
+                display: none;
+            }
+
+            /* Drag and drop visual feedback */
+            body.drag-active #stage {
+                box-shadow: 0 0 0 4px var(--accent);
+            }
+            body.drag-active #ph {
+                color: var(--accent);
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <h1>
+                RECAPTURE CHECK
+                <span
+                    >/ real photo vs photo-of-a-screen — runs fully on this
+                    device</span
+                >
+            </h1>
+
+            <div class="panel">
+                <div id="stage">
+                    <video id="cam" playsinline muted></video>
+                    <div id="ph">
+                        <span id="ph-text"
+                            >camera off<br /><small
+                                >(or drag & drop an image here)</small
+                            ></span
+                        >
+                    </div>
+                    <img id="uploadView" />
+                </div>
+                <div id="err"></div>
+                <div class="controls">
+                    <button id="startBtn" class="primary">Start camera</button>
+                    <button id="liveBtn" disabled>Analyze — live</button>
+                    <label class="filebtn"
+                        >Analyze a photo<input
+                            id="fileIn"
+                            type="file"
+                            accept="image/*,.heic,.heif"
+                    /></label>
+                </div>
+            </div>
+
+            <div class="panel result">
+                <div class="rmain">
+                    <div id="verdict">waiting</div>
+                    <div id="scoreNum">—</div>
+                    <div class="meter">
+                        <div class="fill" id="fill"></div>
+                        <div class="thr" id="thrMark"></div>
+                    </div>
+                    <div class="rowline">
+                        <span>0 real</span><span id="latMs"></span
+                        ><span>screen 1</span>
+                    </div>
+                </div>
+                <canvas
+                    id="spec"
+                    width="128"
+                    height="128"
+                    title="frequency spectrum of one analyzed patch"
+                ></canvas>
+            </div>
+
+            <div class="hint">
+                The square is the patch spectrum: isolated bright dots
+                off-centre are screen-pixel moiré; real photos show only a
+                smooth glow. Point at a monitor to watch them appear.
+            </div>
+        </div>
+
+        <script>
+            "use strict";
+            /* ============ feature extractor ============ */
+            const RADIAL_BINS = 40,
+                PATCH = 256,
+                MAX_PATCHES = 6;
+
+            function fft1d(re, im, n, invert) {
+                for (let i = 1, j = 0; i < n; i++) {
+                    let bit = n >> 1;
+                    for (; j & bit; bit >>= 1) j ^= bit;
+                    j ^= bit;
+                    if (i < j) {
+                        let t = re[i];
+                        re[i] = re[j];
+                        re[j] = t;
+                        t = im[i];
+                        im[i] = im[j];
+                        im[j] = t;
+                    }
+                }
+                for (let len = 2; len <= n; len <<= 1) {
+                    const ang = ((invert ? 2 : -2) * Math.PI) / len;
+                    const wr = Math.cos(ang),
+                        wi = Math.sin(ang);
+                    for (let i = 0; i < n; i += len) {
+                        let cwr = 1,
+                            cwi = 0;
+                        for (let k = 0; k < len / 2; k++) {
+                            const ur = re[i + k],
+                                ui = im[i + k];
+                            const vr =
+                                re[i + k + len / 2] * cwr -
+                                im[i + k + len / 2] * cwi;
+                            const vi =
+                                re[i + k + len / 2] * cwi +
+                                im[i + k + len / 2] * cwr;
+                            re[i + k] = ur + vr;
+                            im[i + k] = ui + vi;
+                            re[i + k + len / 2] = ur - vr;
+                            im[i + k + len / 2] = ui - vi;
+                            const nwr = cwr * wr - cwi * wi;
+                            cwi = cwr * wi + cwi * wr;
+                            cwr = nwr;
+                        }
+                    }
+                }
+                if (invert)
+                    for (let i = 0; i < n; i++) {
+                        re[i] /= n;
+                        im[i] /= n;
+                    }
+            }
+            function fft2d(src, N, re, im) {
+                re.set(src);
+                im.fill(0);
+                const rr = new Float64Array(N),
+                    ri = new Float64Array(N);
+                for (let y = 0; y < N; y++) {
+                    const o = y * N;
+                    for (let x = 0; x < N; x++) {
+                        rr[x] = re[o + x];
+                        ri[x] = im[o + x];
+                    }
+                    fft1d(rr, ri, N, false);
+                    for (let x = 0; x < N; x++) {
+                        re[o + x] = rr[x];
+                        im[o + x] = ri[x];
+                    }
+                }
+                for (let x = 0; x < N; x++) {
+                    for (let y = 0; y < N; y++) {
+                        rr[y] = re[y * N + x];
+                        ri[y] = im[y * N + x];
+                    }
+                    fft1d(rr, ri, N, false);
+                    for (let y = 0; y < N; y++) {
+                        re[y * N + x] = rr[y];
+                        im[y * N + x] = ri[y];
+                    }
+                }
+            }
+            const GEO = new Map();
+            function geometry(N) {
+                if (GEO.has(N)) return GEO.get(N);
+                const cy = N / 2,
+                    cx = N / 2;
+                const rIdx = new Int32Array(N * N);
+                let rMax = 0;
+                const rT = new Float64Array(N * N);
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++) {
+                        const d = Math.hypot(y - cy, x - cx);
+                        rT[y * N + x] = d;
+                        if (d > rMax) rMax = d;
+                    }
+                const cnt = new Float64Array(RADIAL_BINS);
+                for (let i = 0; i < N * N; i++) {
+                    const b = Math.min(
+                        RADIAL_BINS - 1,
+                        Math.floor((rT[i] / rMax) * (RADIAL_BINS - 1)),
+                    );
+                    rIdx[i] = b;
+                    cnt[b]++;
+                }
+                for (let b = 0; b < RADIAL_BINS; b++)
+                    if (cnt[b] < 1) cnt[b] = 1;
+                const h = new Float64Array(N);
+                for (let n = 0; n < N; n++)
+                    h[n] = 0.5 - 0.5 * Math.cos((2 * Math.PI * n) / (N - 1));
+                const win = new Float64Array(N * N);
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++) win[y * N + x] = h[y] * h[x];
+                const icy = N >> 1,
+                    icx = N >> 1,
+                    band = 6;
+                const mask = new Uint8Array(N * N);
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++)
+                        mask[y * N + x] =
+                            Math.abs(y - icy) <= band ||
+                            Math.abs(x - icx) <= band
+                                ? 0
+                                : 1;
+                const g = { rIdx, cnt, win, mask };
+                GEO.set(N, g);
+                return g;
+            }
+            const shiftedAt = (a, N, y, x) =>
+                a[((y + (N >> 1)) % N) * N + ((x + (N >> 1)) % N)];
+            function percentileSorted(s, p) {
+                const idx = ((s.length - 1) * p) / 100,
+                    lo = Math.floor(idx),
+                    hi = Math.ceil(idx);
+                return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (idx - lo);
+            }
+            let lastLogmag = null,
+                lastN = 0;
+            function fftFeatures(gray, N, geo, sc) {
+                const { rIdx, cnt, win, mask } = geo;
+                const { fre, fim, buf } = sc;
+                let m = 0;
+                for (let i = 0; i < N * N; i++) m += gray[i];
+                m /= N * N;
+                for (let i = 0; i < N * N; i++) buf[i] = (gray[i] - m) * win[i];
+                fft2d(buf, N, fre, fim);
+                const logmag = new Float64Array(N * N);
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++) {
+                        const v = shiftedAt(fre, N, y, x),
+                            w = shiftedAt(fim, N, y, x);
+                        logmag[y * N + x] = Math.log1p(Math.hypot(v, w));
+                    }
+                lastLogmag = logmag;
+                lastN = N;
+                const prof = new Float64Array(RADIAL_BINS);
+                for (let i = 0; i < N * N; i++) prof[rIdx[i]] += logmag[i];
+                for (let b = 0; b < RADIAL_BINS; b++) prof[b] /= cnt[b];
+                let total = 0,
+                    low = 0,
+                    mid = 0,
+                    high = 0;
+                const q = RADIAL_BINS >> 2,
+                    h2 = RADIAL_BINS >> 1;
+                for (let b = 1; b < RADIAL_BINS; b++) {
+                    total += prof[b];
+                    if (b < q) low += prof[b];
+                    else if (b < h2) mid += prof[b];
+                    else high += prof[b];
+                }
+                total += 1e-8;
+                let peak = -Infinity,
+                    sum = 0,
+                    sum2 = 0,
+                    nv = 0;
+                const vals = [];
+                for (let i = 0; i < N * N; i++) {
+                    if (!mask[i]) continue;
+                    const w = logmag[i] / (prof[rIdx[i]] + 1e-6);
+                    vals.push(w);
+                    if (w > peak) peak = w;
+                    sum += w;
+                    sum2 += w * w;
+                    nv++;
+                }
+                const mean = sum / nv,
+                    std = Math.sqrt(Math.max(0, sum2 / nv - mean * mean));
+                let nPk = 0;
+                const t5 = mean + 5 * std;
+                for (const v of vals) if (v > t5) nPk++;
+                vals.sort((a, b) => a - b);
+                const p999 = percentileSorted(vals, 99.9);
+                let ps = 0,
+                    ps2 = 0;
+                for (let b = 1; b < RADIAL_BINS; b++) {
+                    ps += prof[b];
+                    ps2 += prof[b] * prof[b];
+                }
+                const nb = RADIAL_BINS - 1,
+                    pm = ps / nb,
+                    pstd = Math.sqrt(Math.max(0, ps2 / nb - pm * pm));
+                return [
+                    low / total,
+                    mid / total,
+                    high / total,
+                    (high + mid) / (low + 1e-6),
+                    peak,
+                    p999,
+                    Math.log1p(nPk),
+                    pstd / (pm + 1e-6),
+                ];
+            }
+            function gaussBlur(g, N, out, tmp) {
+                const sig = 1.5,
+                    R = 4,
+                    k = new Float64Array(2 * R + 1);
+                let ks = 0;
+                for (let i = -R; i <= R; i++) {
+                    k[i + R] = Math.exp((-i * i) / (2 * sig * sig));
+                    ks += k[i + R];
+                }
+                for (let i = 0; i < k.length; i++) k[i] /= ks;
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++) {
+                        let s = 0;
+                        for (let i = -R; i <= R; i++)
+                            s +=
+                                g[y * N + Math.min(N - 1, Math.max(0, x + i))] *
+                                k[i + R];
+                        tmp[y * N + x] = s;
+                    }
+                for (let y = 0; y < N; y++)
+                    for (let x = 0; x < N; x++) {
+                        let s = 0;
+                        for (let i = -R; i <= R; i++)
+                            s +=
+                                tmp[
+                                    Math.min(N - 1, Math.max(0, y + i)) * N + x
+                                ] * k[i + R];
+                        out[y * N + x] = s;
+                    }
+            }
+            function residualFeatures(gray, N, sc) {
+                const { buf, buf2, tmp } = sc;
+                for (let i = 0; i < N * N; i++)
+                    buf2[i] = Math.min(255, Math.max(0, Math.round(gray[i])));
+                gaussBlur(buf2, N, buf, tmp);
+                const res = buf2;
+                for (let i = 0; i < N * N; i++) res[i] = gray[i] - buf[i];
+                let s = 0,
+                    s2 = 0,
+                    sa = 0;
+                const n = N * N;
+                for (let i = 0; i < n; i++) {
+                    s += res[i];
+                    s2 += res[i] * res[i];
+                    sa += Math.abs(res[i]);
+                }
+                const mean = s / n,
+                    std = Math.sqrt(Math.max(0, s2 / n - mean * mean)),
+                    mad = sa / n;
+                let k4 = 0;
+                const sd = std + 1e-6;
+                for (let i = 0; i < n; i++) {
+                    const z = (res[i] - mean) / sd;
+                    k4 += z * z * z * z;
+                }
+                const kurt = k4 / n - 3.0;
+                const M = Math.min(128, N);
+                const crop = new Float64Array(M * M);
+                let cm = 0;
+                for (let y = 0; y < M; y++)
+                    for (let x = 0; x < M; x++) {
+                        const v = res[y * N + x];
+                        crop[y * M + x] = v;
+                        cm += v;
+                    }
+                cm /= M * M;
+                for (let i = 0; i < M * M; i++) crop[i] -= cm;
+                const are = new Float64Array(M * M),
+                    aim = new Float64Array(M * M);
+                fft2d(crop, M, are, aim);
+                for (let i = 0; i < M * M; i++) {
+                    are[i] = are[i] * are[i] + aim[i] * aim[i];
+                    aim[i] = 0;
+                }
+                const rr = new Float64Array(M),
+                    ri = new Float64Array(M);
+                for (let y = 0; y < M; y++) {
+                    for (let x = 0; x < M; x++) {
+                        rr[x] = are[y * M + x];
+                        ri[x] = aim[y * M + x];
+                    }
+                    fft1d(rr, ri, M, true);
+                    for (let x = 0; x < M; x++) {
+                        are[y * M + x] = rr[x];
+                        aim[y * M + x] = ri[x];
+                    }
+                }
+                for (let x = 0; x < M; x++) {
+                    for (let y = 0; y < M; y++) {
+                        rr[y] = are[y * M + x];
+                        ri[y] = aim[y * M + x];
+                    }
+                    fft1d(rr, ri, M, true);
+                    for (let y = 0; y < M; y++) are[y * M + x] = rr[y];
+                }
+                let mx = -Infinity;
+                for (let i = 0; i < M * M; i++) if (are[i] > mx) mx = are[i];
+                const icy = M >> 1,
+                    icx = M >> 1;
+                let acPeak = -Infinity;
+                for (let y = 0; y < M; y++)
+                    for (let x = 0; x < M; x++) {
+                        if (Math.abs(y - icy) <= 3 && Math.abs(x - icx) <= 3)
+                            continue;
+                        const v = shiftedAt(are, M, y, x) / (mx + 1e-8);
+                        if (v > acPeak) acPeak = v;
+                    }
+                return [std, mad, kurt, acPeak];
+            }
+            function colorFeatures(r, g, b, N) {
+                const n = N * N;
+                let sS = 0,
+                    sS2 = 0,
+                    clip = 0,
+                    dark = 0;
+                for (let i = 0; i < n; i++) {
+                    const mx = Math.max(r[i], g[i], b[i]),
+                        mn = Math.min(r[i], g[i], b[i]);
+                    const sat = (mx - mn) / (mx + 1e-6);
+                    sS += sat;
+                    sS2 += sat * sat;
+                    if (mx > 250) clip++;
+                    if (mx < 12) dark++;
+                }
+                const sm = sS / n,
+                    ss = Math.sqrt(Math.max(0, sS2 / n - sm * sm));
+                const seen = new Set();
+                let sub = 0;
+                for (let y = 0; y < N; y += 2)
+                    for (let x = 0; x < N; x += 2) {
+                        const i = y * N + x;
+                        seen.add(
+                            (Math.floor(r[i] / 4) << 12) |
+                                (Math.floor(g[i] / 4) << 6) |
+                                Math.floor(b[i] / 4),
+                        );
+                        sub++;
+                    }
+                return [sm, ss, clip / n, dark / n, seen.size / sub];
+            }
+            function patchVector(r, g, b, N) {
+                const gray = new Float64Array(N * N);
+                for (let i = 0; i < N * N; i++)
+                    gray[i] = 0.299 * r[i] + 0.587 * g[i] + 0.114 * b[i];
+                const geo = geometry(N);
+                const sc = {
+                    fre: new Float64Array(N * N),
+                    fim: new Float64Array(N * N),
+                    buf: new Float64Array(N * N),
+                    buf2: new Float64Array(N * N),
+                    tmp: new Float64Array(N * N),
+                };
+                return [
+                    ...fftFeatures(gray, N, geo, sc),
+                    ...residualFeatures(gray, N, sc),
+                    ...colorFeatures(r, g, b, N),
+                ];
+            }
+            function aggregate(vecs) {
+                const D = vecs[0].length,
+                    P = vecs.length,
+                    out = new Float64Array(3 * D);
+                for (let d = 0; d < D; d++) {
+                    const col = vecs.map((v) => v[d]).sort((a, b) => a - b);
+                    let s = 0;
+                    for (let p = 0; p < P; p++) s += col[p];
+                    out[d] = s / P;
+                    out[D + d] = col[P - 1];
+                    out[2 * D + d] = percentileSorted(col, 90);
+                }
+                return out;
+            }
+
+            function patchCoords(w, h) {
+                if (w < PATCH || h < PATCH) {
+                    throw new Error(
+                        `Image too small (${w}x${h}). Minimum size is 256x256.`,
+                    );
+                }
+                const p = PATCH;
+
+                const xs = [],
+                    ys = [];
+                for (let x = 0; x + p <= w; x += p) xs.push(x);
+                for (let y = 0; y + p <= h; y += p) ys.push(y);
+                if (!xs.length) xs.push(0);
+                else if (xs[xs.length - 1] !== w - p) xs.push(w - p);
+                if (!ys.length) ys.push(0);
+                else if (ys[ys.length - 1] !== h - p) ys.push(h - p);
+                const all = [];
+                for (const y of ys) for (const x of xs) all.push([x, y, p]);
+                if (all.length <= MAX_PATCHES) return all;
+                const out = [],
+                    picked = new Set();
+                for (let i = 0; i < MAX_PATCHES; i++) {
+                    const yi = Math.round(
+                        (i * (ys.length - 1)) / Math.max(1, MAX_PATCHES - 1),
+                    );
+                    const xi = Math.round(
+                        (((i * 2) % xs.length) + Math.floor(i / xs.length)) %
+                            xs.length,
+                    );
+                    const key = yi + "," + xi;
+                    if (!picked.has(key)) {
+                        picked.add(key);
+                        out.push([xs[xi], ys[yi], p]);
+                    }
+                }
+                let k = 0;
+                while (out.length < MAX_PATCHES && k < all.length) {
+                    const c = all[k++];
+                    const key2 = ys.indexOf(c[1]) + "," + xs.indexOf(c[0]);
+                    if (!picked.has(key2)) {
+                        picked.add(key2);
+                        out.push(c);
+                    }
+                }
+                return out;
+            }
+
+            /* ============ model + UI ============ */
+            let W = null;
+            const $ = (id) => document.getElementById(id);
+
+            fetch("weights.json")
+                .then((r) => {
+                    if (!r.ok) throw 0;
+                    return r.json();
+                })
+                .then((w) => {
+                    W = w;
+                    const t = 0.6;
+                    $("thrMark").style.left = t * 100 + "%";
+                })
+                .catch(() =>
+                    showErr("weights.json not found. Run export_weights.py!"),
+                );
+
+            function showErr(msg) {
+                const e = $("err");
+                e.textContent = msg;
+                e.style.display = "block";
+            }
+            function hideErr() {
+                $("err").style.display = "none";
+            }
+
+            function predict(f) {
+                let z = W.intercept;
+                for (let i = 0; i < f.length; i++)
+                    z += ((f[i] - W.mean[i]) / W.scale[i]) * W.coef[i];
+                return 1 / (1 + Math.exp(-z));
+            }
+
+            const grab = document.createElement("canvas");
+            function analyzePixels(w, h, ctx) {
+                const t0 = performance.now();
+                const coords = patchCoords(w, h);
+                const vecs = [];
+                for (const [x, y, p] of coords) {
+                    const d = ctx.getImageData(x, y, p, p).data;
+                    const n = p * p;
+                    const r = new Float64Array(n),
+                        g = new Float64Array(n),
+                        b = new Float64Array(n);
+                    for (let i = 0; i < n; i++) {
+                        r[i] = d[i * 4];
+                        g[i] = d[i * 4 + 1];
+                        b[i] = d[i * 4 + 2];
+                    }
+                    vecs.push(patchVector(r, g, b, p));
+                }
+                const p = predict(aggregate(vecs));
+                render(p, performance.now() - t0);
+                drawSpectrum();
+                return coords;
+            }
+
+            function render(p, ms) {
+                const t = 0.6;
+                $("scoreNum").textContent = p.toFixed(2);
+                $("latMs").textContent = Math.round(ms) + " ms · on-device";
+                const fill = $("fill");
+                fill.style.width = p * 100 + "%";
+                let verdict, color;
+                if (p > t) {
+                    verdict = "screen recapture";
+                    color = "var(--screen)";
+                } else if (p > 0.4) {
+                    verdict = "uncertain";
+                    color = "var(--mid)";
+                } else {
+                    verdict = "real photo";
+                    color = "var(--real)";
+                }
+                fill.style.background = color;
+                const v = $("verdict");
+                v.textContent = verdict;
+                v.style.color = color;
+                $("scoreNum").style.color = color;
+            }
+
+            function drawSpectrum() {
+                if (!lastLogmag) return;
+                const c = $("spec"),
+                    ctx = c.getContext("2d");
+                const S = 128,
+                    N = lastN,
+                    img = ctx.createImageData(S, S);
+                let mx = 0;
+                for (let i = 0; i < N * N; i++)
+                    if (lastLogmag[i] > mx) mx = lastLogmag[i];
+                for (let y = 0; y < S; y++)
+                    for (let x = 0; x < S; x++) {
+                        const v = Math.pow(
+                            lastLogmag[
+                                Math.floor((y * N) / S) * N +
+                                    Math.floor((x * N) / S)
+                            ] /
+                                (mx + 1e-9),
+                            2.2,
+                        );
+                        const o = (y * S + x) * 4;
+                        img.data[o] = Math.min(255, v * 580);
+                        img.data[o + 1] = Math.min(255, v * 300);
+                        img.data[o + 2] = Math.min(
+                            255,
+                            v * 120 +
+                                (v > 0.85 ? (200 * (v - 0.85)) / 0.15 : 0),
+                        );
+                        img.data[o + 3] = 255;
+                    }
+                ctx.putImageData(img, 0, 0);
+            }
+
+            /* ============ Camera Control ============ */
+            const video = $("cam");
+            let liveTimer = null;
+
+            function stopCamera() {
+                if (video.srcObject) {
+                    video.srcObject
+                        .getTracks()
+                        .forEach((track) => track.stop());
+                    video.srcObject = null;
+                }
+            }
+
+            $("startBtn").addEventListener("click", async () => {
+                hideErr();
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1440 },
+                        },
+                        audio: false,
+                    });
+                    video.srcObject = stream;
+                    await video.play();
+
+                    $("uploadView").style.display = "none";
+                    $("uploadView").src = "";
+                    $("cam").style.display = "block";
+                    $("ph").style.display = "none";
+
+                    $("startBtn").disabled = true;
+                    $("startBtn").textContent = "Camera on";
+                    $("liveBtn").disabled = false;
+                    if (!liveTimer) toggleLive();
+                } catch (e) {
+                    showErr(
+                        "Camera unavailable: " +
+                            e.message +
+                            " — use “Analyze a photo”.",
+                    );
+                }
+            });
+
+            function analyzeFrame() {
+                if (!W || !video.videoWidth) return;
+                grab.width = video.videoWidth;
+                grab.height = video.videoHeight;
+                const ctx = grab.getContext("2d", { willReadFrequently: true });
+                ctx.drawImage(video, 0, 0);
+                try {
+                    const coords = analyzePixels(grab.width, grab.height, ctx);
+                    markPatches(coords, grab.width, grab.height);
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+
+            function toggleLive() {
+                if (liveTimer) {
+                    clearInterval(liveTimer);
+                    liveTimer = null;
+                    $("liveBtn").textContent = "Analyze — live";
+                } else {
+                    analyzeFrame();
+                    liveTimer = setInterval(analyzeFrame, 1500);
+                    $("liveBtn").textContent = "Pause";
+                }
+            }
+            $("liveBtn").addEventListener("click", toggleLive);
+
+            function markPatches(coords, fw, fh) {
+                document
+                    .querySelectorAll(".patchbox")
+                    .forEach((el) => el.remove());
+                const stage = $("stage"),
+                    sw = stage.clientWidth,
+                    sh = stage.clientHeight;
+                const scale = Math.max(sw / fw, sh / fh);
+                const ox = (fw * scale - sw) / 2,
+                    oy = (fh * scale - sh) / 2;
+                for (const [x, y, p] of coords) {
+                    const el = document.createElement("div");
+                    el.className = "patchbox";
+                    el.style.left = x * scale - ox + "px";
+                    el.style.top = y * scale - oy + "px";
+                    el.style.width = el.style.height = p * scale + "px";
+                    stage.appendChild(el);
+                }
+                setTimeout(
+                    () =>
+                        document
+                            .querySelectorAll(".patchbox")
+                            .forEach((el) => (el.style.opacity = 0)),
+                    1000,
+                );
+            }
+
+            /* ============ File Upload & Drag-and-Drop with HEIC Support ============ */
+            const phText = $("ph-text");
+
+            async function processFile(f) {
+                if (!f) return;
+                hideErr();
+
+                if (liveTimer) toggleLive();
+                stopCamera();
+
+                $("startBtn").disabled = false;
+                $("startBtn").textContent = "Start camera";
+                $("liveBtn").disabled = true;
+
+                // Setup loading UI
+                $("cam").style.display = "none";
+                $("ph").style.display = "flex";
+                $("uploadView").style.display = "none";
+
+                let fileToProcess = f;
+
+                // HEIC Conversion Block
+                const fileName = f.name.toLowerCase();
+                if (fileName.endsWith(".heic") || fileName.endsWith(".heif")) {
+                    phText.innerHTML =
+                        "Converting HEIC (this takes a second)...";
+                    try {
+                        const converted = await heic2any({
+                            blob: f,
+                            toType: "image/jpeg",
+                            quality: 0.8,
+                        });
+                        fileToProcess = Array.isArray(converted)
+                            ? converted[0]
+                            : converted;
+                    } catch (e) {
+                        showErr("Failed to convert HEIC image: " + e.message);
+                        phText.innerHTML =
+                            "camera off<br><small>(or drag & drop an image here)</small>";
+                        return;
+                    }
+                }
+
+                const url = URL.createObjectURL(fileToProcess);
+                const uv = $("uploadView");
+
+                $("ph").style.display = "none";
+                uv.style.display = "block";
+                uv.src = url;
+
+                if (!W) {
+                    showErr(
+                        "Image loaded, but cannot analyze: weights.json is missing.",
+                    );
+                    return;
+                }
+
+                uv.onload = () => {
+                    setTimeout(() => {
+                        try {
+                            grab.width = uv.naturalWidth;
+                            grab.height = uv.naturalHeight;
+                            const ctx = grab.getContext("2d", {
+                                willReadFrequently: true,
+                            });
+                            ctx.drawImage(uv, 0, 0);
+
+                            const coords = analyzePixels(
+                                grab.width,
+                                grab.height,
+                                ctx,
+                            );
+                            markPatches(coords, grab.width, grab.height);
+
+                            phText.innerHTML =
+                                "camera off<br><small>(or drag & drop an image here)</small>";
+                        } catch (err) {
+                            showErr(err.message);
+                        }
+                    }, 50);
+                };
+            }
+
+            $("fileIn").addEventListener("change", (ev) => {
+                const f = ev.target.files[0];
+                if (f) processFile(f);
+                ev.target.value = "";
+            });
+
+            window.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                document.body.classList.add("drag-active");
+            });
+
+            window.addEventListener("dragleave", (e) => {
+                e.preventDefault();
+                document.body.classList.remove("drag-active");
+            });
+
+            window.addEventListener("drop", (e) => {
+                e.preventDefault();
+                document.body.classList.remove("drag-active");
+
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const f = e.dataTransfer.files[0];
+                    if (
+                        f.type.startsWith("image/") ||
+                        f.name.toLowerCase().endsWith(".heic") ||
+                        f.name.toLowerCase().endsWith(".heif")
+                    ) {
+                        processFile(f);
+                    } else {
+                        showErr("Please drop a valid image file.");
+                    }
+                }
+            });
+        </script>
+    </body>
+</html>
