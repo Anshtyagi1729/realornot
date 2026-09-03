@@ -10,8 +10,6 @@ wheels/
 .venv
 
 # Training photos — large, personal, and regenerable via organize.py
-/raw/
-/data/
 
 # Regenerable feature cache (tied to the local data/ dir, delete to recompute)
 features.npz
